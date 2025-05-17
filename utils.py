@@ -163,7 +163,7 @@ def interpolate_position_sequence(position: np.ndarray, M: int) -> np.ndarray:
     return interpolated_sequence.reshape(1, M)
 
 
-def topN_indices(lst: np.ndarray, N: int) -> list:
+def topN_indices(lst, N):
     """
     返回列表中数值大小前三的元素索引。
 
@@ -171,11 +171,13 @@ def topN_indices(lst: np.ndarray, N: int) -> list:
     :param N: top N大小的数值对应的位置索引
     :return: list: 按值从大到小排序的前三个索引。
     """
-    if not lst:
+    if len(lst) == 0:
+        print("The length of the prediction is zero. Please check the model.")
         return []
 
     arr = np.array(lst)
     sorted_indices = np.argsort(arr)
     top_indices = sorted_indices[-N:][::-1]
+    print(top_indices)
 
     return top_indices.tolist()
