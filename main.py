@@ -7,6 +7,7 @@ from tkinter import ttk
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
+import classification
 import utils
 
 # 全局变量
@@ -17,6 +18,8 @@ acc_data = {
     'roll': [], 'pitch': [], 'yaw': []
 }
 running = True
+position = None
+
 
 def parse_imu_line(line):
     # 假设格式：ax,ay,az,gx,gy,gz,roll,pitch,yaw
@@ -27,6 +30,7 @@ def parse_imu_line(line):
     except Exception as e:
         print("Parse error:", e)
     return None
+
 
 def read_serial_data(serial_port, baud_rate, save_path):
     global acc_data
@@ -54,9 +58,11 @@ def read_serial_data(serial_port, baud_rate, save_path):
                     acc_data['yaw'].append(data[8])
     ser.close()
 
+
 def start_serial_thread(port, baud, path):
     thread = threading.Thread(target=read_serial_data, args=(port, baud, path))
     thread.start()
+
 
 def update_plot(canvas, lines, axes):
     if acc_data['time']:
@@ -69,18 +75,29 @@ def update_plot(canvas, lines, axes):
     if running:
         canvas.get_tk_widget().after(100, update_plot, canvas, lines, axes)
 
+
 def calculate_displacement():
     """根据加速度数据计算位移"""
-    global acc_data
+    global acc_data, position
     # sample_rate = 100  # 假设采样率为 100 Hz
     position = utils.parse_position(acc_data)
 
     return position[:, 0], position[:, 1], position[:, 2]
 
 
+def distinguish_trajectory():
+    """轨迹识别"""
+    global position
+    model = classification.get_model('xgboost')
+    position_parsed = classification.parse_position_sequence('xgboost', position) 
+    pred = model.predict(position_parsed)
+
+    return pred
+
+
 def create_ui():
     root = tk.Tk()
-    root.title("IMU Data Viewer")
+    root.title("Magic Hand Viewer")
     root.geometry("800x600")
 
     # 控件区域
@@ -135,21 +152,43 @@ def create_ui():
     def show_displacement_window():
         displacement_window = tk.Toplevel(root)
         displacement_window.title("Displacement Path")
-        displacement_window.geometry("600x400")
+        displacement_window.geometry("800x400")
 
-        displacement_fig, displacement_ax = plt.subplots(figsize=(5, 4))
+        displacement_fig, displacement_axs = plt.subplots(1, 2, figsize=(5, 4))
         displacement_canvas = FigureCanvasTkAgg(displacement_fig, master=displacement_window)
         displacement_canvas_widget = displacement_canvas.get_tk_widget()
         displacement_canvas_widget.pack(fill=tk.BOTH, expand=True)
 
+        # 绘制轨迹
         x, y, z = calculate_displacement()
-        displacement_ax.plot(x, y, label="Displacement Path", color="blue")
-        displacement_ax.scatter(x[-1], y[-1], color="red", label="Current Position")
-        displacement_ax.set_title("Displacement Path")
-        displacement_ax.set_xlabel("X Position (m)")
-        displacement_ax.set_ylabel("Y Position (m)")
-        displacement_ax.legend()
-        displacement_ax.grid(True)
+        displacement_axs[0].plot(x, y, label="Displacement Path", color="blue")
+        displacement_axs[0].scatter(x[-1], y[-1], color="red", label="Current Position")
+        displacement_axs[0].set_title("Displacement Path")
+        displacement_axs[0].set_xlabel("X Position (m)")
+        displacement_axs[0].set_ylabel("Y Position (m)")
+        displacement_axs[0].legend()
+        displacement_axs[0].grid(True)
+
+        # 绘制分类概率
+        methods = ['method'] * 107
+
+        pred = distinguish_trajectory().flatten()
+        top_indices = utils.topN_indices(pred, N=10)
+        bars = displacement_axs[1].barh(methods[top_indices], pred[top_indices], edgecolor='black', alpha=0.8)
+
+        # 添加准确率数值标签
+        for bar, acc in zip(bars, pred[top_indices]):
+            displacement_axs[1].text(acc+0.01, bar.get_y() + bar.get_height()/2, f'{acc:.5f}', va='center', fontsize=9)
+
+        # 图表设置
+        displacement_axs[1].set_xlabel("Accuracy")
+        displacement_axs[1].set_ylabel("Methods")
+        displacement_axs[1].set_title("Comparison of Accuracy for Different Methods")
+
+        # displacement_axs[1].xlim(0, 1.05)  # 设置X轴范围
+        displacement_axs[1].grid(True)  # 添加网格线
+        # displacement_axs[1].tight_layout()  # 自动调整布局
+
         displacement_canvas.draw()
 
     tk.Button(control_frame, text="Generate Path", command=show_displacement_window).grid(row=0, column=8, padx=5)
@@ -175,3 +214,4 @@ def create_ui():
 if __name__ == "__main__":
     create_ui()
     running = False
+    # distinguish_trajectory(position)

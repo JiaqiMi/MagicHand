@@ -128,3 +128,54 @@ def parse_position(data):
     print("Error: " + "{:.3f}".format(np.sqrt(position[-1].dot(position[-1]))) + " m")
 
     return position
+
+
+def interpolate_position_sequence(position: np.ndarray, M: int) -> np.ndarray:
+    """
+    将形状为 (N, 3) 的position数据展开并插值成长度为 M 的一维序列，输出形状为 (1, M)。
+
+    参数:
+        position (np.ndarray): 输入数组，形状为 (N, 3)，每行为 [x, y, z]。
+        M (int): 目标序列长度。
+
+    返回:
+        np.ndarray: 插值后的序列，形状为 (1, M)。
+    """
+    if position.ndim != 2 or position.shape[1] != 3:
+        raise ValueError("输入必须是形状为 (N, 3) 的数组")
+    
+    N = position.shape[0]
+
+    # 步骤1：展平为 [x1, x2, ..., xn, y1, y2, ..., yn, z1, z2, ..., zn]
+    flat_sequence = position.T.flatten()
+
+    # 步骤2：原始序列索引（0 到 3N-1）
+    original_indices = np.linspace(0, len(flat_sequence) - 1, num=len(flat_sequence))
+
+    # 步骤3：目标索引（0 到 3N-1 上等间距的 M 个点）
+    target_indices = np.linspace(0, len(flat_sequence) - 1, num=M)
+
+    # 步骤4：插值
+    interpolator = interp1d(original_indices, flat_sequence, kind='linear')
+    interpolated_sequence = interpolator(target_indices)
+
+    # 步骤5：reshape 为 (1, M)
+    return interpolated_sequence.reshape(1, M)
+
+
+def topN_indices(lst: np.ndarray, N: int) -> list:
+    """
+    返回列表中数值大小前三的元素索引。
+
+    :param lst: 一维数值列表。
+    :param N: top N大小的数值对应的位置索引
+    :return: list: 按值从大到小排序的前三个索引。
+    """
+    if not lst:
+        return []
+
+    arr = np.array(lst)
+    sorted_indices = np.argsort(arr)
+    top_indices = sorted_indices[-N:][::-1]
+
+    return top_indices.tolist()
