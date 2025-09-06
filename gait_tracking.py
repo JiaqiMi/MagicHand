@@ -6,7 +6,7 @@ import matplotlib.pyplot as pyplot
 import numpy
 
 # Import sensor data ("short_walk.csv" or "long_walk.csv")
-data = numpy.genfromtxt("./test_data/data2.txt", delimiter=",", skip_header=1)
+data = numpy.genfromtxt("./test_data/data3.txt", delimiter=",", skip_header=1)
 
 sample_rate = 50  # 400 Hz
 
@@ -19,7 +19,6 @@ else:
 
 gyroscope = data[:, 1:4]
 accelerometer = data[:, 4:7]
-
 
 # Instantiate AHRS algorithms
 offset = imufusion.Offset(sample_rate)
@@ -132,48 +131,50 @@ plt.show()
 print("Error: " + "{:.3f}".format(numpy.sqrt(position[-1].dot(position[-1]))) + " m")
 
 # Create 3D animation (takes a long time, set to False to skip)
-if False:
-    figure = pyplot.figure(figsize=(10, 10))
+# if False:
+#     figure = pyplot.figure(figsize=(10, 10))
+#
+#     axes = pyplot.axes(projection="3d")
+#     axes.set_xlabel("m")
+#     axes.set_ylabel("m")
+#     axes.set_zlabel("m")
+#
+#     x = []
+#     y = []
+#     z = []
+#
+#     scatter = axes.scatter(x, y, z)
+#
+#     fps = 30
+#     samples_per_frame = int(sample_rate / fps)
+#
+#     def update(frame):
+#         index = frame * samples_per_frame
+#
+#         axes.set_title("{:.3f}".format(timestamp[index]) + " s")
+#
+#         x.append(position[index, 0])
+#         y.append(position[index, 1])
+#         z.append(position[index, 2])
+#
+#         scatter._offsets3d = (x, y, z)
+#
+#         if (min(x) != max(x)) and (min(y) != max(y)) and (min(z) != max(z)):
+#             axes.set_xlim3d(min(x), max(x))
+#             axes.set_ylim3d(min(y), max(y))
+#             axes.set_zlim3d(min(z), max(z))
+#
+#             axes.set_box_aspect((numpy.ptp(x), numpy.ptp(y), numpy.ptp(z)))
+#
+#         return scatter
+#
+#     anim = animation.FuncAnimation(figure, update,
+#                                    frames=int(len(timestamp) / samples_per_frame),
+#                                    interval=1000 / fps,
+#                                    repeat=False)
+#
+#     anim.save("animation.gif", writer=animation.PillowWriter(fps))
+#
+# pyplot.show()
 
-    axes = pyplot.axes(projection="3d")
-    axes.set_xlabel("m")
-    axes.set_ylabel("m")
-    axes.set_zlabel("m")
 
-    x = []
-    y = []
-    z = []
-
-    scatter = axes.scatter(x, y, z)
-
-    fps = 30
-    samples_per_frame = int(sample_rate / fps)
-
-    def update(frame):
-        index = frame * samples_per_frame
-
-        axes.set_title("{:.3f}".format(timestamp[index]) + " s")
-
-        x.append(position[index, 0])
-        y.append(position[index, 1])
-        z.append(position[index, 2])
-
-        scatter._offsets3d = (x, y, z)
-
-        if (min(x) != max(x)) and (min(y) != max(y)) and (min(z) != max(z)):
-            axes.set_xlim3d(min(x), max(x))
-            axes.set_ylim3d(min(y), max(y))
-            axes.set_zlim3d(min(z), max(z))
-
-            axes.set_box_aspect((numpy.ptp(x), numpy.ptp(y), numpy.ptp(z)))
-
-        return scatter
-
-    anim = animation.FuncAnimation(figure, update,
-                                   frames=int(len(timestamp) / samples_per_frame),
-                                   interval=1000 / fps,
-                                   repeat=False)
-
-    anim.save("animation.gif", writer=animation.PillowWriter(fps))
-
-pyplot.show()
