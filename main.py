@@ -91,6 +91,7 @@ def distinguish_trajectory():
     model = classification.get_model('xgboost')
     position_parsed = classification.parse_position_sequence('xgboost', position) 
     pred = model.predict(position_parsed)
+    print(pred)
 
     return pred
 
@@ -152,7 +153,7 @@ def create_ui():
     def show_displacement_window():
         displacement_window = tk.Toplevel(root)
         displacement_window.title("Displacement Path")
-        displacement_window.geometry("800x400")
+        displacement_window.geometry("1000x400")
 
         displacement_fig, displacement_axs = plt.subplots(1, 2, figsize=(5, 4))
         displacement_canvas = FigureCanvasTkAgg(displacement_fig, master=displacement_window)
@@ -170,11 +171,13 @@ def create_ui():
         displacement_axs[0].grid(True)
 
         # 绘制分类概率
-        methods = ['method'] * 107
+        methods = ['method'+str(i) for i in range(107)]
 
         pred = distinguish_trajectory().flatten()
         top_indices = utils.topN_indices(pred, N=10)
-        bars = displacement_axs[1].barh(methods[top_indices], pred[top_indices], edgecolor='black', alpha=0.8)
+        legend = [methods[i] for i in top_indices]
+        values = [pred[i] for i in top_indices]
+        bars = displacement_axs[1].barh(legend, values, edgecolor='black', alpha=0.8)
 
         # 添加准确率数值标签
         for bar, acc in zip(bars, pred[top_indices]):
