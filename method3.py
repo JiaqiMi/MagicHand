@@ -26,6 +26,7 @@ Output (dict):
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from scipy.signal import butter, filtfilt
 
 # ---------------------------
 # Quaternion utilities
@@ -78,6 +79,21 @@ def highpass_step(x, x_prev, y_prev, rc, dt):
     alpha = rc / (rc + dt)
     return alpha * (y_prev + x - x_prev)
 
+
+def highpass_filter(x, fc, fs):
+    """一阶高通滤波"""
+    dt = 1.0 / fs
+    RC = 1.0 / (2 * np.pi * fc)
+    alpha = RC / (RC + dt)
+    y = np.zeros_like(x)
+    y_prev = 0.0
+    x_prev = x[0]
+    for i in range(1, len(x)):
+        y[i] = alpha * (y_prev + x[i] - x_prev)
+        y_prev = y[i]
+        x_prev = x[i]
+    return y
+
 def moving_std(x, win_len):
     if win_len <= 1:
         return np.zeros_like(x)
@@ -96,7 +112,7 @@ def compute_e0_trajectory(data,
                           sample_rate=50.0,
                           init_static_s=3.0,
                           comp_acc_alpha=0.02,
-                          hp_cutoff=0.05,
+                          hp_cutoff=50,
                           gravity_lp_tau=1.0,
                           static_acc_std_window=0.5,
                           static_acc_std_thresh=0.02,
@@ -189,18 +205,32 @@ def compute_e0_trajectory(data,
         lin_acc[i] = a_e - g_e0
 
     # --- highpass filter lin_acc to remove low-frequency bias ---
-    fc = float(hp_cutoff)
-    rc_hp = 1.0 / (2.0 * np.pi * fc) if fc > 0 else 1e9
+    # fc = float(hp_cutoff)
+    # rc_hp = 1.0 / (2.0 * np.pi * fc) if fc > 0 else 1e9
+    # acc_hp = np.zeros_like(lin_acc)
+    # xprev = lin_acc[0].copy()
+    # yprev = np.zeros(3)
+    # for i in range(N):
+    #     dt = dt_arr[i]
+    #     x = lin_acc[i]
+    #     y = highpass_step(x, xprev, yprev, rc_hp, dt)
+    #     acc_hp[i] = y
+    #     xprev = x
+    #     yprev = y
+
+    # version 2
+    # acc_hp = np.zeros_like(lin_acc)
+    # for j in range(3):
+    #     acc_hp[:, j] = highpass_filter(lin_acc[:, j], fc=sample_rate, fs=hp_cutoff)
+
+    # version 3
+    cutoff = 0.3  # 截止频率 Hz
+    fs = 50
+    b, a = butter(2, cutoff / (fs / 2), btype='high')
     acc_hp = np.zeros_like(lin_acc)
-    xprev = lin_acc[0].copy()
-    yprev = np.zeros(3)
-    for i in range(N):
-        dt = dt_arr[i]
-        x = lin_acc[i]
-        y = highpass_step(x, xprev, yprev, rc_hp, dt)
-        acc_hp[i] = y
-        xprev = x
-        yprev = y
+    for j in range(3):
+        acc_hp[:, j] = filtfilt(b, a, lin_acc[:, j])
+
 
     # --- static detection based on acc_hp magnitude std + gyro magnitude ---
     win_len = int(max(1, round(static_acc_std_window * fs)))
@@ -243,10 +273,10 @@ def compute_e0_trajectory(data,
 
     for i in range(1, N):
         dt = dt_arr[i]
-        # a_prev = acc_hp[i-1]
-        # a_curr = acc_hp[i]
-        a_prev = lin_acc[i-1]
-        a_curr = lin_acc[i]
+        a_prev = acc_hp[i-1]
+        a_curr = acc_hp[i]
+        # a_prev = lin_acc[i-1]
+        # a_curr = lin_acc[i]
         vel[i] = vel[i-1] + 0.5 * (a_prev + a_curr) * dt
         pos[i] = pos[i-1] + 0.5 * (vel[i-1] + vel[i]) * dt
 
@@ -294,7 +324,7 @@ def compute_e0_trajectory(data,
     if rng > 0:
         pos2norm = pos2 / rng
 
-
+    # --- Plot variable ---
     fig = plt.figure(figsize=(16, 8))
     plt.subplot(331)
     plt.plot(lin_acc[:, 0], label='lin_acc x')
@@ -320,6 +350,18 @@ def compute_e0_trajectory(data,
     plt.plot(acc_hp[:, 2], label='acc_hp z')
     plt.legend()
 
+    plt.subplot(333)
+    plt.plot(gyr[:, 0], label='gyr x')
+    plt.legend()
+
+    plt.subplot(336)
+    plt.plot(gyr[:, 1], label='gyr y')
+    plt.legend()
+
+    plt.subplot(339)
+    plt.plot(gyr[:, 2], label='gyr z')
+    plt.legend()
+
     plt.show()
 
     result = {
@@ -342,15 +384,31 @@ def compute_e0_trajectory(data,
 if __name__ == "__main__":
     # Quick synthetic demo (replace with real data)
     fs = 50.0
-    dur = 15.0
+    dur = 30.0
     N = int(dur * fs)
 
-    # 大概会飘1m
-
-    data = pd.read_csv('./test_data/magic_hand_static_data_20250627.txt')
+    # data = pd.read_csv('./test_data/magic_hand_static_data_20250627.txt')
+    # data = pd.read_csv('./test_data/magic_hand_static_data_2.txt')
+    data = pd.read_csv('./test_data/move_data_20250915_line_3.txt')
     data.columns = ['gx', 'gy', 'gz', 'ax', 'ay', 'az', 'roll', 'pitch', 'yaw']
+
+    print("data size: ", data.shape[0])
     data = data.dropna(how="any", axis=0)
-    data = data.loc[:N, :]
+
+    data['gy'] = data['gy'].map(lambda x: float(x))
+    data['gz'] = data['gz'].map(lambda x: float(x))
+    data['ax'] = data['ax'].map(lambda x: float(x))
+    print(data.info())
+    print("data size: {} after drop none".format(data.shape[0]))
+    data = data[(data['gx'] > -20) & (data['gx'] < 20)]
+    data = data[(data['gy'] > -20) & (data['gy'] < 20)]
+    data = data[(data['gz'] > -20) & (data['gz'] < 20)]
+    data = data[(data['ax'] > -2) & (data['ax'] < 2)]
+    data = data[(data['ay'] > -2) & (data['ay'] < 2)]
+    data = data[(data['az'] > -2) & (data['az'] < 2)]
+    print("data size: {} after drop err".format(data.shape[0]))
+
+    data = data.loc[:, :]
     # add time column
     sample_rate = 50
     num_samples = data.shape[0]
@@ -362,14 +420,40 @@ if __name__ == "__main__":
     print("pos2norm sample range:", np.min(res['pos2norm'], axis=0), np.max(res['pos2norm'], axis=0))
 
     # optional plotting if you want to visualize (requires matplotlib)
+    # try:
+    #     fig = plt.figure(figsize=(10,5))
+    #     ax = fig.add_subplot(121, projection='3d')
+    #     ax.plot(res['pos3'][:,0], res['pos3'][:,1], res['pos3'][:,2], '-o', markersize=2)
+    #     ax.set_title('pos3 in e0')
+    #     ax2 = fig.add_subplot(122)
+    #     ax2.plot(res['pos2norm'][:,0], res['pos2norm'][:,1], '-o', markersize=2)
+    #     ax2.set_title('pos2norm (PCA projected)')
+    #     plt.show()
+    # except Exception:
+    #     pass
     try:
-        fig = plt.figure(figsize=(10,5))
+        fig = plt.figure(figsize=(12, 5))
+
+        # === 3D 轨迹 with 渐变颜色 ===
         ax = fig.add_subplot(121, projection='3d')
-        ax.plot(res['pos3'][:,0], res['pos3'][:,1], res['pos3'][:,2], '-o', markersize=2)
+        t = np.arange(len(res['pos3']))  # 时间索引
+        sc = ax.scatter(res['pos3'][:, 0], res['pos3'][:, 1], res['pos3'][:, 2],
+                        c=t, cmap='viridis', s=15)  # 用颜色表示时间
+        ax.plot(res['pos3'][:, 0], res['pos3'][:, 1], res['pos3'][:, 2],
+                alpha=0.3, color='gray')  # 加一条透明轨迹线
         ax.set_title('pos3 in e0')
-        ax2 = fig.add_subplot(122)
-        ax2.plot(res['pos2norm'][:,0], res['pos2norm'][:,1], '-o', markersize=2)
-        ax2.set_title('pos2norm (PCA projected)')
+        fig.colorbar(sc, ax=ax, label='time step')
+
+        # === 2D PCA 投影轨迹 with 渐变颜色 ===
+        # ax2 = fig.add_subplot(122)
+        # sc2 = ax2.scatter(res['pos2norm'][:, 0], res['pos2norm'][:, 1],
+        #                   c=t, cmap='viridis', s=15)
+        # ax2.plot(res['pos2norm'][:, 0], res['pos2norm'][:, 1],
+        #          alpha=0.3, color='gray')
+        # ax2.set_title('pos2norm (PCA projected)')
+        # fig.colorbar(sc2, ax=ax2, label='time step')
+
         plt.show()
-    except Exception:
-        pass
+
+    except Exception as e:
+        print("Error while plotting:", e)
